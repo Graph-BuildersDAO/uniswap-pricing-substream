@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package uniswap_pricing.v1;
+
+message FactoryEvents {
+    repeated PairCreated pair_createds = 1;
+}
+
+message PairCreated {
+    string tx_hash = 1;
+    uint32 block_index = 2;
+    google.protobuf.Timestamp block_time = 3;
+    uint64 block_number = 4;
+    ERC20Token token0 = 6;
+    ERC20Token token1 = 7;
+    string pair_address = 8;
+    string factory = 9;
+}
+
+message ERC20Tokens {
+  repeated ERC20Token items = 1;
+}
+
+message ERC20Token {
+  string address = 1;
+  string name = 2;
+  string symbol = 3;
+  uint64 decimals = 4;
+}
+
+message Erc20Price {
+  ERC20Token token = 1;
+  string price_usd = 2;
+  uint64 block_number = 3;
+  
+  enum Source {
+    ORACLES = 0;
+    CHAINLINK = 1;
+    UNISWAP = 2;
+  }
+  Source source = 4;
+}
+
+message Erc20Prices {
+  repeated Erc20Price items = 1;
+}
