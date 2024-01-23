@@ -148,101 +148,58 @@ fn map_uniswap_prices(
                     if let Some(pair) =
                         pairs_store.get_last(StoreKey::pair_key(&Hex::encode(&log.address)))
                     {
-                        let reserve0 = event.reserve0.to_decimal(pair.token0_ref().decimals);
-
-                        let reserve1 = event.reserve1.to_decimal(pair.token1_ref().decimals);
-
                         let mut prices = Vec::new();
 
-                        match pair.token0_ref().address.as_str() {
-                            address if constants::STABLE_COINS.contains(&address) => {
-                                let token_price = reserve0.clone() / reserve1.clone();
+                        let reserve0 = event.reserve0.to_decimal(pair.token0_ref().decimals);
+                        let reserve1 = event.reserve1.to_decimal(pair.token1_ref().decimals);
 
-                                prices.push(Erc20Price {
-                                    token: pair.token1.clone(),
-                                    price_usd: token_price.to_string(),
-                                    block_number: blk.number,
-                                    ordinal: log.ordinal,
-                                    source: Source::Uniswap as i32,
-                                });
-                            }
-                            address if (WETH_ADDRESS).eq(address) => {
-                                if let Some(eth_price) =
-                                    chainlink_prices_store.get_last(StoreKey::chainlink_eth_price())
-                                {
-                                    let token_price =
-                                        (reserve0.clone() / reserve1.clone()) * eth_price;
+                        let token0_address = pair.token0_ref().address.as_str();
+                        let token1_address = pair.token1_ref().address.as_str();
 
-                                    prices.push(Erc20Price {
-                                        token: pair.token1.clone(),
-                                        price_usd: token_price.to_string(),
-                                        block_number: blk.number,
-                                        ordinal: log.ordinal,
-                                        source: Source::Uniswap as i32,
-                                    });
-                                } else if let Some(weth_price) =
-                                    weth_price_store.get_last(StoreKey::eth_usd_price_key())
-                                {
-                                    let token_price = (reserve0.clone() / reserve1.clone())
-                                        * BigDecimal::from_str(weth_price.price_usd.as_str())
-                                            .unwrap();
+                        let eth_price = fetch_eth_price(&chainlink_prices_store, &weth_price_store);
 
-                                    prices.push(Erc20Price {
-                                        token: pair.token1.clone(),
-                                        price_usd: token_price.to_string(),
-                                        block_number: blk.number,
-                                        ordinal: log.ordinal,
-                                        source: Source::Uniswap as i32,
-                                    });
-                                }
-                            }
-                            _ => {}
+                        if constants::STABLE_COINS.contains(&token0_address) {
+                            let token_price = reserve0.clone() / reserve1.clone();
+                            prices.push(Erc20Price {
+                                token: pair.token1.clone(),
+                                price_usd: token_price.to_string(),
+                                block_number: blk.number,
+                                ordinal: log.ordinal,
+                                source: Source::Uniswap as i32,
+                            });
                         }
-                        match pair.token1_ref().address.as_str() {
-                            address if constants::STABLE_COINS.contains(&address) => {
-                                let token_price = reserve1 / reserve0;
-
-                                prices.push(Erc20Price {
-                                    token: pair.token0.clone(),
-                                    price_usd: token_price.to_string(),
-                                    block_number: blk.number,
-                                    ordinal: log.ordinal,
-                                    source: Source::Uniswap as i32,
-                                });
-                            }
-                            address if (WETH_ADDRESS).eq(address) => {
-                                if let Some(eth_price) =
-                                    chainlink_prices_store.get_last(StoreKey::chainlink_eth_price())
-                                {
-                                    let token_price =
-                                        (reserve1.clone() / reserve0.clone()) * eth_price;
-
-                                    prices.push(Erc20Price {
-                                        token: pair.token0.clone(),
-                                        price_usd: token_price.to_string(),
-                                        block_number: blk.number,
-                                        ordinal: log.ordinal,
-                                        source: Source::Uniswap as i32,
-                                    });
-                                } else if let Some(weth_price) =
-                                    weth_price_store.get_last(StoreKey::eth_usd_price_key())
-                                {
-                                    let token_price = (reserve1.clone() / reserve0.clone())
-                                        * BigDecimal::from_str(weth_price.price_usd.as_str())
-                                            .unwrap();
-
-                                    prices.push(Erc20Price {
-                                        token: pair.token0.clone(),
-                                        price_usd: token_price.to_string(),
-                                        block_number: blk.number,
-                                        ordinal: log.ordinal,
-                                        source: Source::Uniswap as i32,
-                                    });
-                                }
-                            }
-                            _ => {}
+                        if constants::STABLE_COINS.contains(&token1_address) {
+                            let token_price = reserve1.clone() / reserve0.clone();
+                            prices.push(Erc20Price {
+                                token: pair.token0.clone(),
+                                price_usd: token_price.to_string(),
+                                block_number: blk.number,
+                                ordinal: log.ordinal,
+                                source: Source::Uniswap as i32,
+                            });
                         }
-
+                        if WETH_ADDRESS.eq(token0_address) && &eth_price != &BigDecimal::zero() {
+                            let token_price =
+                                (reserve0.clone() / reserve1.clone()) * eth_price.clone();
+                            prices.push(Erc20Price {
+                                token: pair.token1.clone(),
+                                price_usd: token_price.to_string(),
+                                block_number: blk.number,
+                                ordinal: log.ordinal,
+                                source: Source::Uniswap as i32,
+                            });
+                        }
+                        if WETH_ADDRESS.eq(token1_address) && &eth_price != &BigDecimal::zero() {
+                            let token_price =
+                                (reserve1.clone() / reserve0.clone()) * eth_price.clone();
+                            prices.push(Erc20Price {
+                                token: pair.token0.clone(),
+                                price_usd: token_price.to_string(),
+                                block_number: blk.number,
+                                ordinal: log.ordinal,
+                                source: Source::Uniswap as i32,
+                            });
+                        }
                         return Some(prices);
                     }
                 }
@@ -268,5 +225,21 @@ fn store_uniswap_prices(prices: Erc20Prices, output: StoreSetProto<Erc20Price>) 
             StoreKey::usd_price_by_symbol(&price.token_ref().symbol),
             &price,
         );
+    }
+}
+
+fn fetch_eth_price(
+    chainlink_prices_store: &StoreGetBigDecimal,
+    weth_price_store: &StoreGetProto<Erc20Price>,
+) -> BigDecimal {
+    // Attempt to get the current ETH price in USD from the imported Chainlink Prices substream store module.
+    // There may not be data as early as we need for the ETH/USD price in this store, in which case
+    // we attempt to get it from the WETH price store.
+    if let Some(eth_price) = chainlink_prices_store.get_last(StoreKey::chainlink_eth_price()) {
+        eth_price
+    } else if let Some(weth_price) = weth_price_store.get_last(StoreKey::eth_usd_price_key()) {
+        BigDecimal::from_str(weth_price.price_usd.as_str()).unwrap_or_else(|_| BigDecimal::zero())
+    } else {
+        BigDecimal::zero()
     }
 }
