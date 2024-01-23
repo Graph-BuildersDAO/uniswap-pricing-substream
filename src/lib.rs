@@ -5,6 +5,8 @@ mod rpc;
 mod store_key_manager;
 mod types;
 
+use std::str::FromStr;
+
 use constants::WETH_ADDRESS;
 use hex_literal::hex;
 use pb::uniswap_pricing::v1::{
@@ -12,6 +14,7 @@ use pb::uniswap_pricing::v1::{
 };
 use rpc::erc20::get_erc20_token;
 use store_key_manager::StoreKey;
+use substreams::scalar::BigDecimal;
 use substreams::store::{
     StoreGet, StoreGetBigDecimal, StoreGetProto, StoreNew, StoreSet, StoreSetIfNotExists,
     StoreSetIfNotExistsProto, StoreSetProto,
@@ -47,6 +50,7 @@ fn map_pair_created_events(blk: eth::Block) -> Result<FactoryEvents, substreams:
                                 block_index: log.block_index,
                                 block_time: Some(blk.timestamp().to_owned()),
                                 block_number: blk.number,
+                                ordinal: log.ordinal,
                                 token0: get_erc20_token(event.token0),
                                 token1: get_erc20_token(event.token1),
                                 pair_address: event.pair.as_string(),
@@ -65,7 +69,7 @@ fn map_pair_created_events(blk: eth::Block) -> Result<FactoryEvents, substreams:
 fn store_pair_created_events(events: FactoryEvents, output: StoreSetIfNotExistsProto<PairCreated>) {
     for event in events.pair_createds {
         output.set_if_not_exists(
-            event.block_number,
+            event.ordinal,
             StoreKey::pair_key(&event.pair_address),
             &event,
         );
@@ -73,9 +77,66 @@ fn store_pair_created_events(events: FactoryEvents, output: StoreSetIfNotExistsP
 }
 
 #[substreams::handlers::map]
+fn map_weth_prices(
+    blk: eth::Block,
+    pairs_store: StoreGetProto<PairCreated>,
+) -> Result<Erc20Prices, substreams::errors::Error> {
+    let prices: Vec<Erc20Price> = blk
+        .receipts()
+        .flat_map(|view| {
+            view.receipt.logs.iter().filter_map(|log| {
+                if let Some(event) = abi::pair::events::Sync::match_and_decode(log) {
+                    if let Some(pair) =
+                        pairs_store.get_last(StoreKey::pair_key(&Hex::encode(&log.address)))
+                    {
+                        let reserve0 = event.reserve0.to_decimal(pair.token0_ref().decimals);
+                        let reserve1 = event.reserve1.to_decimal(pair.token1_ref().decimals);
+
+                        if pair.token0_ref().address == WETH_ADDRESS
+                            && constants::STABLE_COINS.contains(&pair.token1_ref().address.as_str())
+                        {
+                            let weth_price = reserve1.clone() / reserve0.clone();
+                            return Some(Erc20Price {
+                                token: pair.token0.clone(), // WETH
+                                price_usd: weth_price.to_string(),
+                                block_number: blk.number,
+                                ordinal: log.ordinal,
+                                source: Source::Uniswap as i32,
+                            });
+                        } else if pair.token1_ref().address == WETH_ADDRESS
+                            && constants::STABLE_COINS.contains(&pair.token0_ref().address.as_str())
+                        {
+                            let weth_price = reserve0.clone() / reserve1.clone();
+                            return Some(Erc20Price {
+                                token: pair.token1.clone(), // WETH
+                                price_usd: weth_price.to_string(),
+                                block_number: blk.number,
+                                ordinal: log.ordinal,
+                                source: Source::Uniswap as i32,
+                            });
+                        }
+                    }
+                }
+                None
+            })
+        })
+        .collect();
+
+    Ok(Erc20Prices { items: prices })
+}
+
+#[substreams::handlers::store]
+fn store_weth_prices(prices: Erc20Prices, output: StoreSetProto<Erc20Price>) {
+    for price in prices.items {
+        output.set(price.ordinal, StoreKey::eth_usd_price_key(), &price);
+    }
+}
+
+#[substreams::handlers::map]
 fn map_uniswap_prices(
     blk: eth::Block,
     pairs_store: StoreGetProto<PairCreated>,
+    weth_price_store: StoreGetProto<Erc20Price>,
     chainlink_prices_store: StoreGetBigDecimal,
 ) -> Result<Erc20Prices, substreams::errors::Error> {
     let prices: Vec<Erc20Price> = blk
@@ -101,6 +162,7 @@ fn map_uniswap_prices(
                                     token: pair.token1.clone(),
                                     price_usd: token_price.to_string(),
                                     block_number: blk.number,
+                                    ordinal: log.ordinal,
                                     source: Source::Uniswap as i32,
                                 });
                             }
@@ -115,6 +177,21 @@ fn map_uniswap_prices(
                                         token: pair.token1.clone(),
                                         price_usd: token_price.to_string(),
                                         block_number: blk.number,
+                                        ordinal: log.ordinal,
+                                        source: Source::Uniswap as i32,
+                                    });
+                                } else if let Some(weth_price) =
+                                    weth_price_store.get_last(StoreKey::eth_usd_price_key())
+                                {
+                                    let token_price = (reserve0.clone() / reserve1.clone())
+                                        * BigDecimal::from_str(weth_price.price_usd.as_str())
+                                            .unwrap();
+
+                                    prices.push(Erc20Price {
+                                        token: pair.token1.clone(),
+                                        price_usd: token_price.to_string(),
+                                        block_number: blk.number,
+                                        ordinal: log.ordinal,
                                         source: Source::Uniswap as i32,
                                     });
                                 }
@@ -129,6 +206,7 @@ fn map_uniswap_prices(
                                     token: pair.token0.clone(),
                                     price_usd: token_price.to_string(),
                                     block_number: blk.number,
+                                    ordinal: log.ordinal,
                                     source: Source::Uniswap as i32,
                                 });
                             }
@@ -143,6 +221,21 @@ fn map_uniswap_prices(
                                         token: pair.token0.clone(),
                                         price_usd: token_price.to_string(),
                                         block_number: blk.number,
+                                        ordinal: log.ordinal,
+                                        source: Source::Uniswap as i32,
+                                    });
+                                } else if let Some(weth_price) =
+                                    weth_price_store.get_last(StoreKey::eth_usd_price_key())
+                                {
+                                    let token_price = (reserve1.clone() / reserve0.clone())
+                                        * BigDecimal::from_str(weth_price.price_usd.as_str())
+                                            .unwrap();
+
+                                    prices.push(Erc20Price {
+                                        token: pair.token0.clone(),
+                                        price_usd: token_price.to_string(),
+                                        block_number: blk.number,
+                                        ordinal: log.ordinal,
                                         source: Source::Uniswap as i32,
                                     });
                                 }
@@ -163,7 +256,7 @@ fn map_uniswap_prices(
 }
 
 #[substreams::handlers::store]
-fn store_erc20_prices(prices: Erc20Prices, output: StoreSetProto<Erc20Price>) {
+fn store_uniswap_prices(prices: Erc20Prices, output: StoreSetProto<Erc20Price>) {
     for price in prices.items {
         output.set(
             price.block_number,

@@ -16,6 +16,8 @@ pub struct PairCreated {
     pub block_time: ::core::option::Option<::prost_types::Timestamp>,
     #[prost(uint64, tag="4")]
     pub block_number: u64,
+    #[prost(uint64, tag="5")]
+    pub ordinal: u64,
     #[prost(message, optional, tag="6")]
     pub token0: ::core::option::Option<Erc20Token>,
     #[prost(message, optional, tag="7")]
@@ -52,7 +54,9 @@ pub struct Erc20Price {
     pub price_usd: ::prost::alloc::string::String,
     #[prost(uint64, tag="3")]
     pub block_number: u64,
-    #[prost(enumeration="erc20_price::Source", tag="4")]
+    #[prost(uint64, tag="4")]
+    pub ordinal: u64,
+    #[prost(enumeration="erc20_price::Source", tag="5")]
     pub source: i32,
 }
 /// Nested message and enum types in `Erc20Price`.

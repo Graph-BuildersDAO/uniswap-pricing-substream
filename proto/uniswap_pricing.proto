@@ -13,6 +13,7 @@ message PairCreated {
     uint32 block_index = 2;
     google.protobuf.Timestamp block_time = 3;
     uint64 block_number = 4;
+    uint64 ordinal = 5;
     ERC20Token token0 = 6;
     ERC20Token token1 = 7;
     string pair_address = 8;
@@ -34,13 +35,14 @@ message Erc20Price {
   ERC20Token token = 1;
   string price_usd = 2;
   uint64 block_number = 3;
+  uint64 ordinal = 4;
   
   enum Source {
     ORACLES = 0;
     CHAINLINK = 1;
     UNISWAP = 2;
   }
-  Source source = 4;
+  Source source = 5;
 }
 
 message Erc20Prices {
