@@ -16,9 +16,13 @@ mod map_uniswap_prices;
 #[path = "6_store_uniswap_prices.rs"]
 mod store_uniswap_prices;
 
+#[path = "7_warmup.rs"]
+mod warmup;
+
 pub use map_pair_created_events::map_pair_created_events;
 pub use map_uniswap_prices::map_uniswap_prices;
 pub use map_weth_prices::map_weth_prices;
 pub use store_pair_created_events::store_pair_created_events;
 pub use store_uniswap_prices::store_uniswap_prices;
 pub use store_weth_prices::store_weth_prices;
+pub use warmup::warmup;

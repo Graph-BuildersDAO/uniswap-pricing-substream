@@ -1,7 +1,7 @@
 specVersion: v0.1.0
 package:
   name: uniswap_pricing
-  version: v0.1.0
+  version: v0.1.1
 
 imports:
   chainlink_prices: https://github.com/Graph-BuildersDAO/substreams/releases/download/chainlink-prices-v1.0.2/chainlink-price-substream-v1.0.2.spkg
@@ -70,6 +70,14 @@ modules:
     valueType: proto:uniswap_pricing.v1.Erc20Price
     inputs:
       - map: map_uniswap_prices
+
+  - name: map_warmup
+    kind: map
+    initialBlock: 10000835
+    inputs:
+      - store: store_uniswap_prices
+    output:
+      type: proto:uniswap_pricing.v1.Warmup
 
 network: mainnet
 
