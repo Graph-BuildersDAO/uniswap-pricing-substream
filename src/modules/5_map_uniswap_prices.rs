@@ -30,15 +30,17 @@ fn map_uniswap_prices(
                     if let Some(pair) =
                         pairs_store.get_last(StoreKey::pair_key(&Hex::encode(&log.address)))
                     {
-                        let mut prices = Vec::new();
-
                         let reserve0 = event.reserve0.to_decimal(pair.token0_ref().decimals);
                         let reserve1 = event.reserve1.to_decimal(pair.token1_ref().decimals);
 
+                        if reserve0.eq(&BigDecimal::zero()) || reserve1.eq(&BigDecimal::zero()) {
+                            return None;
+                        }
+                        let mut prices = Vec::new();
+                        let eth_price = fetch_eth_price(&chainlink_prices_store, &weth_price_store);
+
                         let token0_address = pair.token0_ref().address.as_str();
                         let token1_address = pair.token1_ref().address.as_str();
-
-                        let eth_price = fetch_eth_price(&chainlink_prices_store, &weth_price_store);
 
                         if STABLE_COINS.contains(&token0_address) {
                             let token_price = reserve0.clone() / reserve1.clone();
