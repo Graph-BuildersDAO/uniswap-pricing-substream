@@ -17,41 +17,42 @@ pub fn get_erc20_token(token_address: Vec<u8>) -> Option<Erc20Token> {
         .add(functions::Symbol {}, token_address.clone())
         .add(functions::Decimals {}, token_address.clone())
         .execute()
-        .unwrap()
+        .ok()?
         .responses;
+
+    // Shadowing as no longer need the Vec<u8>
+    let token_address = Hex::encode(&token_address);
 
     let name = decode_rpc_response::<_, functions::Name>(
         &responses[0],
-        &format!(
-            "{} is not an ERC20 token contract name `eth_call` failed",
-            Hex::encode(&token_address)
-        ),
+        &format!("Failed to decode `name` for token: {}", &token_address),
     )
-    .unwrap_or_else(|| read_string_from_bytes(responses[1].raw.as_ref()));
+    .or_else(|| read_string_from_bytes(responses[1].raw.as_ref()))?;
 
     let symbol = decode_rpc_response::<_, functions::Symbol>(
         &responses[1],
-        &format!(
-            "{} is not an ERC20 token contract symbol `eth_call` failed",
-            Hex::encode(&token_address)
-        ),
+        &format!("Failed to decode `symbol` for token: {}", &token_address),
     )
-    .unwrap_or_else(|| read_string_from_bytes(responses[2].raw.as_ref()));
+    .or_else(|| read_string_from_bytes(responses[2].raw.as_ref()))?;
 
     let decimals = decode_rpc_response::<_, functions::Decimals>(
         &responses[2],
-        &format!(
-            "{} is not an ERC20 token contract decimal `eth_call` failed",
-            Hex::encode(&token_address)
-        ),
+        &format!("Failed to decode `decimals` for token: {}", &token_address),
     )
-    .unwrap_or(BigInt::zero());
+    .and_then(|dec| {
+        // Check the decimals returned from the contract is within a suitable range
+        if dec.gt(&BigInt::zero()) && dec.lt(&BigInt::from(255)) {
+            Some(dec.to_u64())
+        } else {
+            None
+        }
+    })?;
 
     Some(Erc20Token {
-        address: Hex::encode(&token_address),
-        name: name,
-        symbol: symbol,
-        decimals: decimals.to_u64(),
+        address: token_address,
+        name,
+        symbol,
+        decimals,
     })
 }
 
@@ -65,13 +66,14 @@ fn decode_rpc_response<R, T: RPCDecodable<R> + Function>(
     })
 }
 
-fn read_string_from_bytes(input: &[u8]) -> String {
+fn read_string_from_bytes(input: &[u8]) -> Option<String> {
+    substreams::log::debug!("inside the else");
     // we have to check if we have a valid utf8 representation and if we do
     // we return the value if not we return a DecodeError
     if let Some(last) = input.to_vec().iter().rev().position(|&pos| pos != 0) {
-        return String::from_utf8_lossy(&input[0..input.len() - last]).to_string();
+        return Some(String::from_utf8_lossy(&input[0..input.len() - last]).to_string());
+    } else {
+        // use case when all the bytes are set to 0
+        None
     }
-
-    // use case when all the bytes are set to 0
-    "".to_string()
 }
