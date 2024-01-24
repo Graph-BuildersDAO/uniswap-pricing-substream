@@ -48,3 +48,7 @@ message Erc20Price {
 message Erc20Prices {
   repeated Erc20Price items = 1;
 }
+
+message Warmup {
+  bool is_warm = 1;
+}
