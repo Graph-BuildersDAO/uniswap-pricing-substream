@@ -27,13 +27,13 @@ pub fn get_erc20_token(token_address: Vec<u8>) -> Option<Erc20Token> {
         &responses[0],
         &format!("Failed to decode `name` for token: {}", &token_address),
     )
-    .or_else(|| read_string_from_bytes(responses[1].raw.as_ref()))?;
+    .or_else(|| read_string_from_bytes(responses[0].raw.as_ref()))?;
 
     let symbol = decode_rpc_response::<_, functions::Symbol>(
         &responses[1],
         &format!("Failed to decode `symbol` for token: {}", &token_address),
     )
-    .or_else(|| read_string_from_bytes(responses[2].raw.as_ref()))?;
+    .or_else(|| read_string_from_bytes(responses[1].raw.as_ref()))?;
 
     let decimals = decode_rpc_response::<_, functions::Decimals>(
         &responses[2],
